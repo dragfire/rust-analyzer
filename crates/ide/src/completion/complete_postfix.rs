@@ -1,9 +1,14 @@
 //! FIXME: write short doc here
 use assists::utils::TryEnum;
+use stdx::format_to;
 use syntax::{
     ast::{self, AstNode},
-    TextRange, TextSize,
+    SyntaxKind::{
+        BLOCK_EXPR, BREAK_EXPR, CLOSURE_EXPR, COMMENT, LOOP_EXPR, MATCH_ARM, PATH_EXPR, RETURN_EXPR,
+    },
+    SyntaxNode, TextRange, TextSize,
 };
+use test_utils::mark;
 use text_edit::TextEdit;
 
 use crate::{
@@ -41,81 +46,46 @@ pub(super) fn complete_postfix(acc: &mut Completions, ctx: &CompletionContext) {
     if let Some(try_enum) = &try_enum {
         match try_enum {
             TryEnum::Result => {
-                postfix_snippet(
-                    ctx,
-                    cap,
-                    &dot_receiver,
-                    "ifl",
-                    "if let Ok {}",
-                    &format!("if let Ok($1) = {} {{\n    $0\n}}", receiver_text),
-                )
+                postfix_snippet(ctx, cap, &dot_receiver, "ifl", "if let Ok {}", || {
+                    format!("if let Ok($1) = {} {{\n    $0\n}}", receiver_text)
+                })
                 .add_to(acc);
 
-                postfix_snippet(
-                    ctx,
-                    cap,
-                    &dot_receiver,
-                    "while",
-                    "while let Ok {}",
-                    &format!("while let Ok($1) = {} {{\n    $0\n}}", receiver_text),
-                )
+                postfix_snippet(ctx, cap, &dot_receiver, "while", "while let Ok {}", || {
+                    format!("while let Ok($1) = {} {{\n    $0\n}}", receiver_text)
+                })
                 .add_to(acc);
             }
             TryEnum::Option => {
-                postfix_snippet(
-                    ctx,
-                    cap,
-                    &dot_receiver,
-                    "ifl",
-                    "if let Some {}",
-                    &format!("if let Some($1) = {} {{\n    $0\n}}", receiver_text),
-                )
+                postfix_snippet(ctx, cap, &dot_receiver, "ifl", "if let Some {}", || {
+                    format!("if let Some($1) = {} {{\n    $0\n}}", receiver_text)
+                })
                 .add_to(acc);
 
-                postfix_snippet(
-                    ctx,
-                    cap,
-                    &dot_receiver,
-                    "while",
-                    "while let Some {}",
-                    &format!("while let Some($1) = {} {{\n    $0\n}}", receiver_text),
-                )
+                postfix_snippet(ctx, cap, &dot_receiver, "while", "while let Some {}", || {
+                    format!("while let Some($1) = {} {{\n    $0\n}}", receiver_text)
+                })
                 .add_to(acc);
             }
         }
     } else if receiver_ty.is_bool() || receiver_ty.is_unknown() {
-        postfix_snippet(
-            ctx,
-            cap,
-            &dot_receiver,
-            "if",
-            "if expr {}",
-            &format!("if {} {{\n    $0\n}}", receiver_text),
-        )
+        postfix_snippet(ctx, cap, &dot_receiver, "if", "if expr {}", || {
+            format!("if {} {{\n    $0\n}}", receiver_text)
+        })
         .add_to(acc);
-        postfix_snippet(
-            ctx,
-            cap,
-            &dot_receiver,
-            "while",
-            "while expr {}",
-            &format!("while {} {{\n    $0\n}}", receiver_text),
-        )
+        postfix_snippet(ctx, cap, &dot_receiver, "while", "while expr {}", || {
+            format!("while {} {{\n    $0\n}}", receiver_text)
+        })
         .add_to(acc);
-        postfix_snippet(ctx, cap, &dot_receiver, "not", "!expr", &format!("!{}", receiver_text))
+        postfix_snippet(ctx, cap, &dot_receiver, "not", "!expr", || format!("!{}", receiver_text))
             .add_to(acc);
     }
 
-    postfix_snippet(ctx, cap, &dot_receiver, "ref", "&expr", &format!("&{}", receiver_text))
+    postfix_snippet(ctx, cap, &dot_receiver, "ref", "&expr", || format!("&{}", receiver_text))
         .add_to(acc);
-    postfix_snippet(
-        ctx,
-        cap,
-        &dot_receiver,
-        "refm",
-        "&mut expr",
-        &format!("&mut {}", receiver_text),
-    )
+    postfix_snippet(ctx, cap, &dot_receiver, "refm", "&mut expr", || {
+        format!("&mut {}", receiver_text)
+    })
     .add_to(acc);
 
     // The rest of the postfix completions create an expression that moves an argument,
@@ -133,67 +103,165 @@ pub(super) fn complete_postfix(acc: &mut Completions, ctx: &CompletionContext) {
                     &dot_receiver,
                     "match",
                     "match expr {}",
-                    &format!("match {} {{\n    Ok(${{1:_}}) => {{$2}},\n    Err(${{3:_}}) => {{$0}},\n}}", receiver_text),
+                    || format!("match {} {{\n    Ok(${{1:_}}) => {{$2}},\n    Err(${{3:_}}) => {{$0}},\n}}", receiver_text),
                 )
                 .add_to(acc);
             }
             TryEnum::Option => {
-                postfix_snippet(
-                    ctx,
-                    cap,
-                    &dot_receiver,
-                    "match",
-                    "match expr {}",
-                    &format!(
+                postfix_snippet(ctx, cap, &dot_receiver, "match", "match expr {}", || {
+                    format!(
                         "match {} {{\n    Some(${{1:_}}) => {{$2}},\n    None => {{$0}},\n}}",
                         receiver_text
-                    ),
-                )
+                    )
+                })
                 .add_to(acc);
             }
         },
         None => {
-            postfix_snippet(
-                ctx,
-                cap,
-                &dot_receiver,
-                "match",
-                "match expr {}",
-                &format!("match {} {{\n    ${{1:_}} => {{$0}},\n}}", receiver_text),
-            )
+            postfix_snippet(ctx, cap, &dot_receiver, "match", "match expr {}", || {
+                format!("match {} {{\n    ${{1:_}} => {{$0}},\n}}", receiver_text)
+            })
             .add_to(acc);
         }
     }
 
-    postfix_snippet(
-        ctx,
-        cap,
-        &dot_receiver,
-        "box",
-        "Box::new(expr)",
-        &format!("Box::new({})", receiver_text),
-    )
+    postfix_snippet(ctx, cap, &dot_receiver, "box", "Box::new(expr)", || {
+        format!("Box::new({})", receiver_text)
+    })
     .add_to(acc);
 
-    postfix_snippet(
-        ctx,
-        cap,
-        &dot_receiver,
-        "dbg",
-        "dbg!(expr)",
-        &format!("dbg!({})", receiver_text),
-    )
+    postfix_snippet(ctx, cap, &dot_receiver, "dbg", "dbg!(expr)", || {
+        format!("dbg!({})", receiver_text)
+    })
     .add_to(acc);
 
-    postfix_snippet(
-        ctx,
-        cap,
-        &dot_receiver,
-        "call",
-        "function(expr)",
-        &format!("${{1}}({})", receiver_text),
-    )
+    postfix_snippet(ctx, cap, &dot_receiver, "call", "function(expr)", || {
+        format!("${{1}}({})", receiver_text)
+    })
     .add_to(acc);
+    postfix_snippet(ctx, cap, &dot_receiver, "let", "let |var|", || {
+        let node = dot_receiver.syntax();
+        if node.kind() != COMMENT {
+            let to_extract = node.ancestors().find_map(valid_target_expr).unwrap();
+            let anchor = Anchor::from(&to_extract).unwrap();
+            let indent =
+                anchor.syntax().prev_sibling_or_token().unwrap().as_token().unwrap().clone();
+            let target = to_extract.syntax().text_range();
+            let field_shorthand =
+                match to_extract.syntax().parent().and_then(ast::RecordExprField::cast) {
+                    Some(field) => field.name_ref(),
+                    None => None,
+                };
+            let mut buf = String::new();
+
+            let var_name = match &field_shorthand {
+                Some(it) => it.to_string(),
+                None => "var_name".to_string(),
+            };
+            let expr_range = match &field_shorthand {
+                Some(it) => it.syntax().text_range().cover(to_extract.syntax().text_range()),
+                None => to_extract.syntax().text_range(),
+            };
+
+            if let Anchor::WrapInBlock(_) = anchor {
+                format_to!(buf, "{{ let {} ", var_name);
+            } else {
+                format_to!(buf, "let {} = ", var_name);
+            }
+
+            if let Anchor::Replace(stmt) = anchor {
+                if stmt.semicolon_token().is_none() {
+                    buf.push(';');
+                }
+            } else {
+                buf.push(';');
+                let text = indent.text();
+                if text.starts_with('\n') {
+                    buf.push('\n');
+                    buf.push_str(text.trim_start_matches('\n'));
+                } else {
+                    buf.push_str(text);
+                }
+            }
+            buf
+        } else {
+            String::new()
+        }
+        //         edit.replace(expr_range, var_name.clone());
+        //         let offset = anchor.syntax().text_range().start();
+        //         match ctx.config.snippet_cap {
+        //             Some(cap) => {
+        //                 let snip = buf
+        //                     .replace(&format!("let {}", var_name), &format!("let $0{}", var_name));
+        //                 edit.insert_snippet(cap, offset, snip)
+        //             }
+        //             None => edit.insert(offset, buf),
+        //         }
+
+        //         if let Anchor::WrapInBlock(_) = anchor {
+        //             edit.insert(anchor.syntax().text_range().end(), " }");
+        //         }
+        //     },
+        // )
+    })
+    .add_to(acc);
+}
+
+/// Check whether the node is a valid expression which can be extracted to a variable.
+/// In general that's true for any expression, but in some cases that would produce invalid code.
+fn valid_target_expr(node: SyntaxNode) -> Option<ast::Expr> {
+    match node.kind() {
+        PATH_EXPR | LOOP_EXPR => None,
+        BREAK_EXPR => ast::BreakExpr::cast(node).and_then(|e| e.expr()),
+        RETURN_EXPR => ast::ReturnExpr::cast(node).and_then(|e| e.expr()),
+        BLOCK_EXPR => {
+            ast::BlockExpr::cast(node).filter(|it| it.is_standalone()).map(ast::Expr::from)
+        }
+        _ => ast::Expr::cast(node),
+    }
+}
+
+enum Anchor {
+    Before(SyntaxNode),
+    Replace(ast::ExprStmt),
+    WrapInBlock(SyntaxNode),
+}
+
+impl Anchor {
+    fn from(to_extract: &ast::Expr) -> Option<Anchor> {
+        to_extract.syntax().ancestors().find_map(|node| {
+            if let Some(expr) =
+                node.parent().and_then(ast::BlockExpr::cast).and_then(|it| it.expr())
+            {
+                if expr.syntax() == &node {
+                    return Some(Anchor::Before(node));
+                }
+            }
+
+            if let Some(parent) = node.parent() {
+                if parent.kind() == MATCH_ARM || parent.kind() == CLOSURE_EXPR {
+                    return Some(Anchor::WrapInBlock(node));
+                }
+            }
+
+            if let Some(stmt) = ast::Stmt::cast(node.clone()) {
+                if let ast::Stmt::ExprStmt(stmt) = stmt {
+                    if stmt.expr().as_ref() == Some(to_extract) {
+                        return Some(Anchor::Replace(stmt));
+                    }
+                }
+                return Some(Anchor::Before(node));
+            }
+            None
+        })
+    }
+
+    fn syntax(&self) -> &SyntaxNode {
+        match self {
+            Anchor::Before(it) | Anchor::WrapInBlock(it) => it,
+            Anchor::Replace(stmt) => stmt.syntax(),
+        }
+    }
 }
 
 fn get_receiver_text(receiver: &ast::Expr, receiver_is_ambiguous_float_literal: bool) -> String {
@@ -216,19 +284,23 @@ fn include_references(initial_element: &ast::Expr) -> ast::Expr {
     resulting_element
 }
 
-fn postfix_snippet(
+fn postfix_snippet<F>(
     ctx: &CompletionContext,
     cap: SnippetCap,
     receiver: &ast::Expr,
     label: &str,
     detail: &str,
-    snippet: &str,
-) -> Builder {
+    snippet: F,
+) -> Builder
+where
+    F: FnOnce() -> String,
+{
     let edit = {
         let receiver_syntax = receiver.syntax();
-        let receiver_range = ctx.sema.original_range(receiver_syntax).range;
+        let start_syntax = &receiver_syntax.ancestors().next().unwrap();
+        let receiver_range = ctx.sema.original_range(start_syntax).range;
         let delete_range = TextRange::new(receiver_range.start(), ctx.source_range().end());
-        TextEdit::replace(delete_range, snippet.to_string())
+        TextEdit::replace(delete_range, snippet())
     };
     CompletionItem::new(CompletionKind::Postfix, ctx.source_range(), label)
         .detail(detail)
@@ -374,5 +446,44 @@ fn main() {
     fn postfix_completion_for_references() {
         check_edit("dbg", r#"fn main() { &&42.<|> }"#, r#"fn main() { dbg!(&&42) }"#);
         check_edit("refm", r#"fn main() { &&42.<|> }"#, r#"fn main() { &&&mut 42 }"#);
+    }
+
+    #[test]
+    fn postfix_completion_for_let_simple() {
+        check_edit(
+            "let",
+            r#"
+struct Window { size: u32 };
+fn main() {
+    Window { size: 0 }.let<|>
+}
+"#,
+            r#"
+struct Window { size: u32 };
+fn main() {
+    let |var| = Window { size: 0 };
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn postfix_completion_for_let_inside_function() {
+        check_edit(
+            "let",
+            r#"
+struct Window { size: u32 };
+fn main() {
+    let size = get_window_size(Window { size: 0 }.let<|>);
+}
+"#,
+            r#"
+struct Window { size: u32 };
+fn main() {
+    let |var| = Window { size: 0 };
+    let size = get_window_size(|var|);
+}
+"#,
+        );
     }
 }
